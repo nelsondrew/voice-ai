@@ -1,0 +1,7 @@
+# Ignore the .git folder
+.git/
+*.md
+*.log
+node_modules/
+tmp/
+.gitignore

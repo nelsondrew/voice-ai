@@ -11,7 +11,7 @@ type HelloController struct {
 }
 
 func GetHelloMessage() string {
-	return "Hello, World from Gin Backend!"
+	return "Hello, World from Gin Backend Updated!"
 }
 
 func CreateHello(name string) string {
