@@ -23,5 +23,10 @@ func SetupRouter() *gin.Engine {
 		userGroup.POST("", handlers.CreateUserHandler)
 	}
 
+	v1 := router.Group("/v1")
+	{
+		v1.POST("/voice-to-text", handlers.VoiceToTextHandler)
+	}
+
 	return router
 }

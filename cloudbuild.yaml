@@ -23,6 +23,9 @@ steps:
     - '--allow-unauthenticated'
     - '--update-secrets'
     - 'CUSTOM_PORT=CUSTOM_PORT:latest'  # Use CUSTOM_PORT instead of PORT
+    - '--update-secrets'
+    - 'CRED_JSON=CRED_JSON:latest'
+
 
 images:
 - 'gcr.io/$PROJECT_ID/voice-ai'
