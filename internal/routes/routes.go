@@ -8,6 +8,7 @@ import (
 
 func SetupRouter() *gin.Engine {
 	router := gin.Default()
+	voiceAssistantHandler := handlers.NewVoiceAssistantHandler()
 
 	// Hello World routes
 	helloGroup := router.Group("/hello")
@@ -26,6 +27,7 @@ func SetupRouter() *gin.Engine {
 	v1 := router.Group("/v1")
 	{
 		v1.POST("/voice-to-text", handlers.VoiceToTextHandler)
+		v1.POST("/voice-assistant", voiceAssistantHandler.VoiceAssistantHandler)
 	}
 
 	return router

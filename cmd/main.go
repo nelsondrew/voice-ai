@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"golang-gin-boilerplate/internal/routes"
 	"log"
 	"os"
@@ -25,12 +26,16 @@ func main() {
 		}
 	}
 
+	// Debugging: Print the value of CRED_JSON to check its content
+	credsJSON := os.Getenv("CRED_JSON")
+	fmt.Println("CRED_JSON:", credsJSON)
+
 	port := os.Getenv("CUSTOM_PORT")
 
 	if port != "" {
 		log.Println("Got the port:", port)
 	} else {
-		log.Println("PORT environment variable is not set")
+		fmt.Println("PORT environment variable is not set")
 	}
 	// Initialize and start the server
 	router := routes.SetupRouter()
