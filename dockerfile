@@ -1,5 +1,5 @@
 # Start from the official Golang image
-FROM golang:1.21-alpine AS builder
+FROM golang:1.22-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -13,9 +13,6 @@ RUN go mod download
 # Copy the source code
 COPY . .
 
-# Copy the .env file into the container
-# COPY .env .env
-
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -o main cmd/main.go
 
@@ -24,10 +21,10 @@ FROM alpine:latest
 
 WORKDIR /root/
 
-# Copy the pre-built binary file from the previous stage
+# Copy the pre-built binary file from the builder stage
 COPY --from=builder /app/main .
 
-# Copy the .env file from the builder stage to the root directory
+# Copy the .env file from the builder stage to the final image
 # COPY --from=builder /app/.env .env
 
 # Expose port 8080

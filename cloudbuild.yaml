@@ -1,11 +1,11 @@
 steps:
-  # Build the container image
+  # Build the container image using buildx with specified platform
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/voice-ai', '.']
+    args: ['buildx', 'build', '--platform', 'linux/amd64', '-t', 'gcr.io/$PROJECT_ID/voice-ai', '--push', '.']
 
-  # Push the container image to Container Registry
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/voice-ai']
+  # Push the container image to Container Registry (optional if buildx handles pushing)
+  # - name: 'gcr.io/cloud-builders/docker'
+  #   args: ['push', 'gcr.io/$PROJECT_ID/voice-ai']
 
   # Deploy container to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -25,7 +25,8 @@ steps:
     - 'CUSTOM_PORT=CUSTOM_PORT:latest'  # Use CUSTOM_PORT instead of PORT
     - '--update-secrets'
     - 'CRED_JSON=CRED_JSON:latest'
-
+    - '--update-secrets'
+    - 'OPEN_API_KEY=OPEN_API_KEY:latest'
 
 images:
 - 'gcr.io/$PROJECT_ID/voice-ai'
