@@ -3,73 +3,191 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 
 	speech "cloud.google.com/go/speech/apiv1"
 	"cloud.google.com/go/speech/apiv1/speechpb"
+	"github.com/go-audio/audio"
+	"github.com/go-audio/wav"
 	"google.golang.org/api/option"
 )
 
 type VoiceToTextController struct{}
 
-// ConvertVoiceToText converts an audio file to text using Google Cloud Speech-to-Text API
 func (v *VoiceToTextController) ConvertVoiceToText(audioFilePath string) (string, error) {
-	// Set up the client context
+	// Open the audio file
+	file, err := os.Open(audioFilePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open audio file: %v", err)
+	}
+	defer file.Close()
+
+	// Decode the WAV file
+	decoder := wav.NewDecoder(file)
+
+	// Check if the file is valid
+	if !decoder.IsValidFile() {
+		return "", fmt.Errorf("invalid WAV file")
+	}
+
+	// Read the WAV file header and decode the audio data
+	buf, err := decoder.FullPCMBuffer()
+	if err != nil {
+		return "", fmt.Errorf("failed to decode WAV file: %v", err)
+	}
+
+	// Check if it's stereo (2 channels)
+	if buf.Format.NumChannels != 2 {
+		return v.ConvertVoiceToTextNormal(audioFilePath)
+	}
+
+	// Convert stereo to mono by averaging the left and right channels
+	monoData := make([]int16, len(buf.Data)/2)
+	for i := 0; i < len(monoData); i++ {
+		// Average left and right channels
+		monoData[i] = (int16(buf.Data[i*2]) + int16(buf.Data[i*2+1])) / 2
+	}
+
+	monoDataInt := make([]int, len(monoData))
+	for i, v := range monoData {
+		monoDataInt[i] = int(v)
+	}
+
+	// Create a new file for the mono WAV file
+	monoFilePath := "mono_" + audioFilePath
+	monoFile, err := os.Create(monoFilePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to create mono file: %v", err)
+	}
+	defer monoFile.Close()
+
+	// Create a new WAV encoder for mono file
+	encoder := wav.NewEncoder(monoFile, int(decoder.SampleRate), 16, 1, 1) // Convert SampleRate to int
+
+	monoBuffer := &audio.IntBuffer{Data: monoDataInt, Format: &audio.Format{SampleRate: int(decoder.SampleRate), NumChannels: 1}}
+
+	// Write the mono data to the encoder
+	if err := encoder.Write(monoBuffer); err != nil {
+		return "", fmt.Errorf("failed to write mono WAV file: %v", err)
+	}
+
+	// Use the mono file for speech-to-text
+	return v.transcribeMonoFile(monoFilePath)
+}
+
+func (v *VoiceToTextController) transcribeMonoFile(monoFilePath string) (string, error) {
 	ctx := context.Background()
 
-	// Retrieve the credentials JSON string from the environment variable
+	// Read credentials from environment variable
 	credsJSON := os.Getenv("CRED_JSON")
 	if credsJSON == "" {
-		return "", fmt.Errorf("CRED_JSON environment variable is not set")
+		return "", fmt.Errorf("credentials not configured")
 	}
 
-	// Convert the credentials JSON string to a byte slice
+	// Save credentials to a temporary file
 	credsByteSlice := []byte(credsJSON)
-
-	// Create a temporary file to store the credentials
-	tmpFile, err := ioutil.TempFile("", "creds-*.json")
+	tmpFile, err := os.CreateTemp("", "creds-*.json")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temporary credentials file: %v", err)
+		return "", fmt.Errorf("temp file creation failed: %v", err)
 	}
-	defer os.Remove(tmpFile.Name()) // Ensure the temporary file is removed after use
+	defer os.Remove(tmpFile.Name())
 
-	// Write the credentials to the temporary file
+	// Write credentials to temp file
 	if _, err := tmpFile.Write(credsByteSlice); err != nil {
-		return "", fmt.Errorf("failed to write credentials to temporary file: %v", err)
+		return "", fmt.Errorf("credential write failed: %v", err)
 	}
+	tmpFile.Close()
 
-	// Create the Speech client using the credentials file
+	// Create a new Speech client
 	client, err := speech.NewClient(ctx, option.WithCredentialsFile(tmpFile.Name()))
 	if err != nil {
-		return "", fmt.Errorf("failed to create speech client: %v", err)
+		return "", fmt.Errorf("speech client creation failed: %v", err)
 	}
 	defer client.Close()
 
-	// Read the audio file from the disk
-	data, err := ioutil.ReadFile(audioFilePath)
+	// Read the mono WAV file into memory
+	data, err := os.ReadFile(monoFilePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to read audio file: %v", err)
+		return "", fmt.Errorf("audio file read failed: %v", err)
 	}
 
-	// Configure the recognition request
+	// Configure the request to Google Cloud Speech API
 	req := &speechpb.RecognizeRequest{
 		Config: &speechpb.RecognitionConfig{
-			Encoding:     speechpb.RecognitionConfig_LINEAR16, // or speechpb.RecognitionConfig_FLAC if the file is FLAC
-			LanguageCode: "en-US",                             // Language of the speech in the audio
+			Encoding:          speechpb.RecognitionConfig_LINEAR16,
+			LanguageCode:      "en-US",
+			AudioChannelCount: 1, // mono
 		},
 		Audio: &speechpb.RecognitionAudio{
 			AudioSource: &speechpb.RecognitionAudio_Content{Content: data},
 		},
 	}
 
-	// Perform the speech-to-text recognition
+	// Send the request to Google Cloud Speech API
 	resp, err := client.Recognize(ctx, req)
 	if err != nil {
-		return "", fmt.Errorf("failed to recognize speech: %v", err)
+		return "", fmt.Errorf("speech recognition failed: %v", err)
 	}
 
-	// Extract and combine all recognized text
+	// Collect all transcriptions from the response
+	var resultText string
+	for _, result := range resp.Results {
+		for _, alt := range result.Alternatives {
+			resultText += alt.Transcript + " "
+		}
+	}
+
+	// Return the result text (transcribed speech)
+	return resultText, nil
+}
+
+func (v *VoiceToTextController) ConvertVoiceToTextNormal(audioFilePath string) (string, error) {
+	ctx := context.Background()
+
+	credsJSON := os.Getenv("CRED_JSON")
+	if credsJSON == "" {
+		return "", fmt.Errorf("credentials not configured")
+	}
+
+	credsByteSlice := []byte(credsJSON)
+	tmpFile, err := os.CreateTemp("", "creds-*.json")
+	if err != nil {
+		return "", fmt.Errorf("temp file creation failed: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write(credsByteSlice); err != nil {
+		return "", fmt.Errorf("credential write failed: %v", err)
+	}
+	tmpFile.Close()
+
+	client, err := speech.NewClient(ctx, option.WithCredentialsFile(tmpFile.Name()))
+	if err != nil {
+		return "", fmt.Errorf("speech client creation failed: %v", err)
+	}
+	defer client.Close()
+
+	data, err := os.ReadFile(audioFilePath)
+	if err != nil {
+		return "", fmt.Errorf("audio file read failed: %v", err)
+	}
+
+	req := &speechpb.RecognizeRequest{
+		Config: &speechpb.RecognitionConfig{
+			Encoding:          speechpb.RecognitionConfig_LINEAR16,
+			LanguageCode:      "en-US",
+			AudioChannelCount: 1,
+		},
+		Audio: &speechpb.RecognitionAudio{
+			AudioSource: &speechpb.RecognitionAudio_Content{Content: data},
+		},
+	}
+
+	resp, err := client.Recognize(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("speech recognition failed: %v", err)
+	}
+
 	var resultText string
 	for _, result := range resp.Results {
 		for _, alt := range result.Alternatives {
@@ -77,6 +195,5 @@ func (v *VoiceToTextController) ConvertVoiceToText(audioFilePath string) (string
 		}
 	}
 
-	// Return the recognized text
 	return resultText, nil
 }

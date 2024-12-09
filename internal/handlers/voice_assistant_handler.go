@@ -106,6 +106,58 @@ func (h *VoiceAssistantHandler) VoiceAssistantHandler(c *gin.Context) {
 	c.File(audioFilePath)
 }
 
+func (h *VoiceAssistantHandler) VoiceAssistantHandlerWithoutSpeech(c *gin.Context) {
+	c.Header("Access-Control-Allow-Origin", "*") // Allow all origins, change "*" to specific origin if needed
+
+	// Parse file from the form
+	file, err := c.FormFile("audio_file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Failed to retrieve audio file",
+		})
+		return
+	}
+
+	// Save the uploaded file locally
+	filePath := "/tmp/" + file.Filename
+	if err := c.SaveUploadedFile(file, filePath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to save audio file",
+		})
+		return
+	}
+	defer func() {
+		if err := os.Remove(filePath); err != nil {
+			log.Printf("Failed to remove temporary file: %v", err)
+		}
+	}()
+
+	// Convert voice to text
+	transcribedText, err := h.voiceController.ConvertVoiceToText(filePath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to transcribe audio: " + err.Error(),
+		})
+		return
+	}
+
+	// Process transcribed text with ChatGPT
+	assistantResponse, err := h.chatController.ProcessConversation(transcribedText)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to process conversation: " + err.Error(),
+		})
+		return
+	}
+
+	// Return both transcribed text and AI response
+	c.JSON(http.StatusOK, gin.H{
+		"transcribed_text":     transcribedText,
+		"assistant_response":   assistantResponse,
+		"total_context_tokens": h.context.CalculateTotalTokens(),
+	})
+}
+
 func (h *VoiceAssistantHandler) convertTextToSpeech(text string) ([]byte, error) {
 	// Eleven Labs API endpoint (adjust the voice ID as needed)
 	url := "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM"
