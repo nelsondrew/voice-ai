@@ -23,7 +23,7 @@ func NewChatGPTController() *ChatGPTController {
 
 	return &ChatGPTController{
 		client:  openai.NewClient(apiKey),
-		context: services.NewConversationContext(openai.GPT3Ada002),
+		context: services.NewConversationContext(openai.GPT3Dot5Turbo),
 	}
 }
 
@@ -44,7 +44,7 @@ func (c *ChatGPTController) ProcessConversation(userInput string) (string, error
 
 	// Prepare request
 	req := openai.ChatCompletionRequest{
-		Model:     openai.GPT3Ada002,
+		Model:     openai.GPT3Dot5Turbo,
 		Messages:  c.context.Messages,
 		MaxTokens: 1500,
 	}
