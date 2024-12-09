@@ -98,6 +98,10 @@ func (h *VoiceAssistantHandler) VoiceAssistantHandler(c *gin.Context) {
 		}
 	}()
 
+	// Set the headers for audio response
+	c.Header("Content-Type", "audio/mpeg")
+	c.Header("Content-Disposition", "inline; filename=assistant_response.mp3")
+
 	// Return transcribed text, AI response, and audio file
 	c.File(audioFilePath)
 }
