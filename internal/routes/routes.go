@@ -2,13 +2,14 @@ package routes
 
 import (
 	"golang-gin-boilerplate/internal/handlers"
+	"os"
 
 	"github.com/gin-gonic/gin"
 )
 
 func SetupRouter() *gin.Engine {
 	router := gin.Default()
-	voiceAssistantHandler := handlers.NewVoiceAssistantHandler()
+	voiceAssistantHandler := handlers.NewVoiceAssistantHandler(os.Getenv("ELEVEN_LABS_API_KEY"))
 
 	// Hello World routes
 	helloGroup := router.Group("/hello")
