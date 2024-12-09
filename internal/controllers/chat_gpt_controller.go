@@ -31,17 +31,6 @@ func (c *ChatGPTController) ProcessConversation(userInput string) (string, error
 	// Add user message
 	c.context.AddMessage(services.MessageTypeUser, userInput)
 
-	totalTokens := 0
-	for _, message := range c.context.Messages {
-		totalTokens += len(message.Content) // Approximate token count, a better approach would involve using a tokenizer
-	}
-
-	fmt.Printf("Total tokens: %d\n", totalTokens)
-
-	if len(c.context.Messages) > 0 {
-		c.context.Messages = c.context.Messages[len(c.context.Messages)-1:]
-	}
-
 	// Prepare request
 	req := openai.ChatCompletionRequest{
 		Model:     openai.GPT3Dot5Turbo,
