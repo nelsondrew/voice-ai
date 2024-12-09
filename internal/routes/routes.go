@@ -29,6 +29,7 @@ func SetupRouter() *gin.Engine {
 	{
 		v1.POST("/voice-to-text", handlers.VoiceToTextHandler)
 		v1.POST("/voice-assistant", voiceAssistantHandler.VoiceAssistantHandler)
+		v1.POST("/voice-assistant-without-speech", voiceAssistantHandler.VoiceAssistantHandlerWithoutSpeech)
 	}
 
 	return router
