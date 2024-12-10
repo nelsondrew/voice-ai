@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"golang-gin-boilerplate/internal/controllers"
 	"golang-gin-boilerplate/internal/services"
@@ -34,6 +35,8 @@ func NewVoiceAssistantHandler(elevenLabsAPIKey string) *VoiceAssistantHandler {
 }
 
 func (h *VoiceAssistantHandler) VoiceAssistantHandler(c *gin.Context) {
+	c.Header("Access-Control-Allow-Origin", "*") // Allow all origins, change "*" to specific origin if needed
+
 	// Parse file from the form
 	file, err := c.FormFile("audio_file")
 	if err != nil {
@@ -76,7 +79,7 @@ func (h *VoiceAssistantHandler) VoiceAssistantHandler(c *gin.Context) {
 	}
 
 	// Convert text to speech using Eleven Labs
-	audioData, err := h.convertTextToSpeech(assistantResponse)
+	audioData, err := h.convertTextToSpeechLocal(assistantResponse)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to convert text to speech: " + err.Error(),
@@ -133,6 +136,7 @@ func (h *VoiceAssistantHandler) VoiceAssistantHandlerWithoutSpeech(c *gin.Contex
 	}()
 
 	// Convert voice to text
+	start := time.Now() // Record the start time
 	transcribedText, err := h.voiceController.ConvertVoiceToText(filePath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -140,8 +144,13 @@ func (h *VoiceAssistantHandler) VoiceAssistantHandlerWithoutSpeech(c *gin.Contex
 		})
 		return
 	}
+	duration := time.Since(start) // Calculate the elapsed time
+
+	fmt.Printf("Execution time of Voice to text: %v\n", duration)
 
 	// Process transcribed text with ChatGPT
+	start = time.Now() // Record the start time
+
 	assistantResponse, err := h.chatController.ProcessConversation(transcribedText)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -149,6 +158,8 @@ func (h *VoiceAssistantHandler) VoiceAssistantHandlerWithoutSpeech(c *gin.Contex
 		})
 		return
 	}
+	duration = time.Since(start) // Calculate the elapsed time
+	fmt.Printf("Execution time of Conversation Processing: %v\n", duration)
 
 	// Return both transcribed text and AI response
 	c.JSON(http.StatusOK, gin.H{
@@ -202,6 +213,53 @@ func (h *VoiceAssistantHandler) convertTextToSpeech(text string) ([]byte, error)
 	}
 
 	// Read the audio response
+	audioData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	return audioData, nil
+}
+
+func (h *VoiceAssistantHandler) convertTextToSpeechLocal(text string) ([]byte, error) {
+	// Local FastAPI server endpoint
+	url := fmt.Sprintf("%s/generate", "https://coqui-service-75777829797.us-central1.run.app")
+
+	// Prepare the request body
+	payload := map[string]interface{}{
+		"text": text,
+	}
+
+	// Create JSON payload
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create JSON payload: %v", err)
+	}
+
+	// Create HTTP request
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %v", err)
+	}
+
+	// Set headers
+	req.Header.Set("Content-Type", "application/json")
+
+	// Send the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Check response status
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API returned non-200 status: %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	// Read the audio response (MP3 file)
 	audioData, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %v", err)
